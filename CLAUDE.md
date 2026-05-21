@@ -1,11 +1,17 @@
 # Project context
 
-ESP32-S3 firmware for a desk-side Claude Code usage monitor. Two board variants are supported via a build-flag macro:
+ESP32-S3 firmware for a desk-side Claude Code usage monitor. Each supported
+board lives in its own `firmware/src/boards/<name>/` folder and is selected
+via PlatformIO's `build_src_filter`. Adding a board means dropping in a new
+folder + a new `[env:...]` block — `main.cpp`, `ui.cpp`, and `splash.cpp`
+never see board-specific code. See [`docs/porting/adding-a-board.md`](docs/porting/adding-a-board.md).
 
-- **`-DBOARD_AMOLED_216`** → original Waveshare ESP32-S3-Touch-AMOLED-2.16 (CO5300, 480×480 square, CST9220 touch). Build env: `waveshare_amoled_216`.
-- **`-DBOARD_AMOLED_18`** → Waveshare ESP32-S3-Touch-AMOLED-1.8 (SH8601, 368×448 portrait, FT3168 touch). Build env: `waveshare_amoled_18`.
+Two reference ports today:
 
-`display_cfg.h` selects pins / typedefs / extern decls based on the macro. Per-board layout deltas (panel heights, fonts) are scoped with `#ifdef` in `ui.cpp` and `splash.cpp`.
+- `boards/waveshare_amoled_216/` — original Waveshare ESP32-S3-Touch-AMOLED-2.16 (CO5300, 480×480 square, CST9220 touch, IMU rotation). Build env: `waveshare_amoled_216`.
+- `boards/waveshare_amoled_18/` — Waveshare ESP32-S3-Touch-AMOLED-1.8 (SH8601, 368×448 portrait, FT3168 touch, XCA9554 IO expander). Build env: `waveshare_amoled_18`.
+
+The shared code calls a small HAL (`firmware/src/hal/`) that each board implements: display, touch, input, power, IMU. Optional features are guarded by `BoardCaps` (runtime) and `BOARD_HAS_*` (compile-time) rather than `#ifdef BOARD_*`.
 
 Connects to a host daemon over BLE; daemon polls Anthropic API for usage data. This file is for future Claude Code sessions to bootstrap quickly. Read this first.
 
@@ -30,20 +36,35 @@ Connects to a host daemon over BLE; daemon polls Anthropic API for usage data. T
 ## Architecture
 
 ```text
-main.cpp        — setup(), loop(), button polling, FT3168 minimal reader (AMOLED-1.8), rotation flash (2.16 only)
-display_cfg.h   — board-conditional pin defines, typedefs (PlatformDisplay = CO5300|SH8601), extern object decls
-io_expander.{h,cpp} — XCA9554/PCA9554 wrapper (AMOLED-1.8 only): LCD/TP reset release + PWR button read
-ui.{h,cpp}      — 3-screen UI (splash, usage, bluetooth); splash is touch-toggled, usage↔bluetooth via PWR button
-splash.{h,cpp}  — 20×20 pixel-art animation engine. CELL = 24 (480²) for 2.16, 18 (360² centered) for 1.8
-imu.{h,cpp}     — accelerometer-driven rotation tracker (returns 0..3). Result is ignored on AMOLED-1.8.
-power.{h,cpp}   — AXP2101 wrapper (battery %, charging, VBUS, PWR button). PWR source is conditional: AXP PKEY IRQ on 2.16, XCA9554 EXIO4 polling on 1.8.
-ble.{h,cpp}     — NimBLE peripheral: custom data service + HID keyboard
-data.h          — UsageData struct
-icons.h         — icon arrays. Battery (5×) are RGB565A8 with alpha; rest are raw RGB565.
-logo.h          — 80×80 RGB565 logo
-font_*.c        — pre-compiled LVGL 9 bitmap fonts (Tiempos 56/34, Styrene 48/28/24/20/16/14/12, Mono 32/18)
-splash_animations.h — generated, do not hand-edit
+firmware/src/
+  hal/                      — board-agnostic interfaces shared code calls into
+    board_caps.h            — runtime BoardCaps struct (W, H, button_count, has_* flags)
+    display_hal.h           — init / begin / set_brightness / draw_bitmap / tick / round_area
+    touch_hal.h             — init / read(&x, &y, &pressed)
+    input_hal.h             — init / is_held(PRIMARY|SECONDARY)
+    power_hal.h             — init / tick / battery_pct / is_charging / pwr_pressed (edge)
+    imu_hal.h               — init / tick / rotation_quadrant
+  boards/
+    waveshare_amoled_216/   — CO5300 + CST9220 + AXP PKEY + QMI8658 rotation
+    waveshare_amoled_18/    — SH8601 + FT3168 + AXP + XCA9554 (PWR via EXIO4), no rotation
+    template/               — copy this to bootstrap a new port
+  main.cpp                  — setup() + loop(): HAL calls only, zero #ifdef BOARD_*
+  ui.{h,cpp}                — 3-screen UI (splash, usage, bluetooth). compute_layout() picks fonts/positions from board_caps() (responsive — current breakpoint: H >= 460 → large, else compact)
+  splash.{h,cpp}            — 20×20 pixel-art engine. CELL = min(W,H)/20, centered.
+  ble.{h,cpp}               — NimBLE peripheral: custom data service + HID keyboard
+  data.h                    — UsageData struct
+  icons.h                   — icon arrays. Battery (5×) are RGB565A8 with alpha; rest are raw RGB565.
+  logo.h                    — 80×80 RGB565 logo
+  font_*.c                  — pre-compiled LVGL 9 bitmap fonts (Tiempos 56/34, Styrene 48/28/24/20/16/14/12, Mono 32/18)
+  splash_animations.h       — generated, do not hand-edit
+docs/porting/               — adding-a-board.md, hal-contract.md, capability-flags.md
 ```
+
+Each board folder contains: `board.h` (pins, I2C addresses, `BOARD_HAS_*` flags),
+`board_init.cpp` (Wire.begin + any IO expander), `display.cpp`, `touch.cpp`,
+`input.cpp`, `power.cpp`, `imu.cpp`, `caps.cpp` (the `BoardCaps` instance), plus
+any board-private hardware drivers (e.g. `io_expander.{h,cpp}` on AMOLED-1.8).
+PlatformIO's `build_src_filter` includes shared code + one board's folder per env.
 
 ## Build / flash
 
@@ -66,14 +87,16 @@ The boot screen is `SCREEN_SPLASH` and only advances on a physical button press,
 
 ## Critical gotchas
 
-1. **CO5300 cannot rotate.** Its MADCTL only supports axis flips, not column/row exchange. Rotation is done by **CPU pixel remapping in `my_flush_cb`** in main.cpp. We use **PARTIAL render mode with strip rotation** (small 480×40 strips, fast). On rotation change → AMOLED brightness flash → force redraw.
+1. **CO5300 cannot rotate.** Its MADCTL only supports axis flips, not column/row exchange. Rotation is done by **CPU pixel remapping inside `display_hal_draw_bitmap`** in `boards/waveshare_amoled_216/display.cpp`. We use **PARTIAL render mode with strip rotation** (small 480×40 strips, fast). On rotation change → AMOLED brightness flash → force redraw (handled inside `display_hal_tick`).
 2. **OPI PSRAM** required: `board_build.arduino.memory_type = qio_opi` in platformio.ini. Without this, `MALLOC_CAP_SPIRAM` returns NULL and the screen is black.
 3. **pioarduino platform required.** GFX Library for Arduino needs Arduino Core 3.x (`esp32-hal-periman.h`), not the 2.x that standard `espressif32` ships. We pin `pioarduino/platform-espressif32` 55.03.38-1.
 4. **LVGL 9 font patching.** `lv_font_conv` outputs LVGL 8 format. Must remove `#if LVGL_VERSION_MAJOR >= 8` guards, drop `.cache` field, add `.release_glyph`, `.kerning`, `.static_bitmap`, `.fallback`, `.user_data`. Without patching, fonts render invisible.
-5. **Touch reading must be centralized.** CST9220's `getPoint()` does a full I2C transaction. Calling it from multiple places consumed each other's data and broke input. `touch_read()` is called once per loop in main.cpp; both LVGL `my_touch_cb` and `touch.cpp` read from shared `touch_pressed/touch_x/touch_y` state.
-6. **CO5300 needs even-aligned flush regions.** `rounder_cb` enforces this.
-7. **Touch `setSwapXY(true)` and `setMirrorXY(true, false)`** are the empirically-correct values for default rotation 0. IMU rotation logic doesn't change touch mapping (it does CPU-side rotation of the rendered pixels, so LVGL still thinks the display is portrait at 0°).
+5. **Touch reading is centralized inside each board's `touch.cpp`.** The HAL `touch_hal_read()` is called once per loop from `my_touch_cb`; the board's implementation owns its latched `touch_pressed/x/y` state. Don't call the underlying controller from anywhere else — CST9220's `getPoint()` etc. do a full I2C transaction and concurrent callers consume each other's data.
+6. **Even-aligned flush regions.** `display_hal_round_area` (called from `rounder_cb`) is what each board uses to enforce this. Required on CO5300, harmless on SH8601.
+7. **Touch axis swap/mirror is per-board.** The 2.16's CST9220 needs `setSwapXY(true)` + `setMirrorXY(true, false)` — applied inside `boards/waveshare_amoled_216/touch.cpp::touch_hal_init()`. New ports apply their own.
 8. **LVGL RGB565A8 is planar.** `w*h` RGB565 pixels followed by `w*h` alpha bytes; `data_size = w*h*3`, `stride = w*2`. Use `init_icon_dsc_rgb565a8()` for icons that overlap non-uniform backgrounds (e.g. battery over splash). Lucide source PNGs are black-on-transparent — converter must tint to white or icons render invisible. See `tools/png_to_lvgl.js`.
+9. **Per-board pre-init is `board_init()`.** Each board's `board_init.cpp` brings up `Wire` and any reset-gating IO expander BEFORE `display_hal_init()`. Skipping the IO expander release on AMOLED-1.8 leaves SH8601 + FT3168 in reset and they silently fail to probe.
+10. **No `#ifdef BOARD_*` in shared code.** The whole point of the refactor — if you're about to add one, you probably want a `BoardCaps` field or a per-board file instead. See `docs/porting/capability-flags.md`.
 
 ## Icons
 
@@ -97,6 +120,8 @@ See `~/.claude/projects/.../memory/` files for persistent context (user is an em
 
 ## Recent session highlights
 
+- **Device-abstraction refactor (2026-05-18).** All board-conditional code moved out of shared files into `boards/<name>/` and behind a HAL in `hal/`. ~30 `#ifdef BOARD_*` blocks went to zero. UI is responsive via `compute_layout()` driven by `board_caps()`. New ports add a folder + a PlatformIO env — no shared file edits.
+- Added second board port: Waveshare AMOLED-1.8 (368×448 portrait, SH8601, FT3168, XCA9554 IO expander).
 - Migrated from Panlee SC01 Plus (480×320 IPS) to Waveshare 2.16" AMOLED (480×480 square). Full hardware/library swap.
 - Added IMU auto-rotation, battery indicator, USB-state-aware screen switching.
 - Added splash screen with scraped pixel-art animations and 3-button physical input layout.

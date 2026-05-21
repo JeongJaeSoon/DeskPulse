@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include "idle.h"
 #include "idle_cfg.h"
-#include "display_cfg.h"   // declares `extern Arduino_CO5300 *gfx;`
-#include "power.h"
+#include "hal/display_hal.h"
+#include "hal/power_hal.h"
 
 enum IdleState {
     STATE_AWAKE,
@@ -19,7 +19,7 @@ static uint8_t  fade_from = DISPLAY_DEFAULT_BRIGHTNESS;
 static uint8_t  fade_to   = 0;
 
 static void apply_brightness(uint8_t b) {
-    gfx->setBrightness(b);
+    display_hal_set_brightness(b);
 }
 
 static void begin_fade(uint8_t to, uint32_t now) {
@@ -72,7 +72,7 @@ void idle_tick(void) {
 
     // While on USB power (if configured), don't sleep — and wake from sleep
     // when power comes back. Treats USB-in as continuous activity.
-    if (!IDLE_SLEEP_WHEN_CHARGING && power_is_vbus_in()) {
+    if (!IDLE_SLEEP_WHEN_CHARGING && power_hal_is_vbus_in()) {
         last_activity_ms = now;
         if (state == STATE_ASLEEP || state == STATE_FADING_OUT) {
             begin_fade(DISPLAY_DEFAULT_BRIGHTNESS, now);
