@@ -33,5 +33,6 @@ for a desk-side AI usage monitor that can show multiple providers.
 
 At the divergence point, the upstream repository did not include an explicit
 LICENSE file. Original upstream code and assets remain attributable to their
-original authors. New work in this fork should not be presented as relicensing
-the upstream project unless licensing is clarified separately.
+original authors. DeskPulse does not currently publish a separate open-source
+license for the combined codebase. See [NOTICE.md](NOTICE.md) for the current
+license and third-party asset notes.

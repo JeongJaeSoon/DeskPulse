@@ -5,7 +5,8 @@ ESP32 desk-side usage monitor for Claude Code and Codex.
 DeskPulse is maintained as a separate multi-provider fork of
 [HermannBjorgvin/Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter).
 The GitHub fork relationship is intentionally retained. See
-[UPSTREAM.md](UPSTREAM.md) for origin, attribution, and license notes.
+[UPSTREAM.md](UPSTREAM.md) for origin history and [NOTICE.md](NOTICE.md) for
+license and third-party asset notes.
 
 Some runtime names still use the original `Claude Controller` and
 `claude-usage-daemon` identifiers for compatibility with existing BLE pairing
@@ -166,4 +167,5 @@ Tap the screen to toggle between splash and the last non-splash screen.
 
 - Board porting: [docs/porting/adding-a-board.md](docs/porting/adding-a-board.md)
 - HAL contract: [docs/porting/hal-contract.md](docs/porting/hal-contract.md)
-- Upstream origin and attribution: [UPSTREAM.md](UPSTREAM.md)
+- Upstream origin: [UPSTREAM.md](UPSTREAM.md)
+- License and third-party notices: [NOTICE.md](NOTICE.md)
