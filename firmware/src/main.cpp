@@ -219,12 +219,27 @@ static void send_screenshot() {
 #endif
 }
 
+static void handle_serial_cmd(const char* cmd) {
+    if (strcmp(cmd, "screenshot") == 0) {
+        send_screenshot();
+    } else if (strcmp(cmd, "usage") == 0 || strcmp(cmd, "screen usage") == 0) {
+        ui_show_screen(SCREEN_USAGE);
+        Serial.println("SCREEN_OK usage");
+    } else if (strcmp(cmd, "splash") == 0 || strcmp(cmd, "screen splash") == 0) {
+        ui_show_screen(SCREEN_SPLASH);
+        Serial.println("SCREEN_OK splash");
+    } else if (strcmp(cmd, "bluetooth") == 0 || strcmp(cmd, "screen bluetooth") == 0) {
+        ui_show_screen(SCREEN_BLUETOOTH);
+        Serial.println("SCREEN_OK bluetooth");
+    }
+}
+
 static void check_serial_cmd() {
     while (Serial.available()) {
         char c = Serial.read();
         if (c == '\n' || c == '\r') {
             cmd_buf[cmd_pos] = '\0';
-            if (strcmp(cmd_buf, "screenshot") == 0) send_screenshot();
+            if (cmd_pos > 0) handle_serial_cmd(cmd_buf);
             cmd_pos = 0;
         } else if (cmd_pos < CMD_BUF_SIZE - 1) {
             cmd_buf[cmd_pos++] = c;
