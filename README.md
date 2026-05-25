@@ -1,10 +1,18 @@
-# Clawdmeter
+# DeskPulse
 
-A small ESP32 dashboard I made for my desk to keep an eye on Claude Code usage.
+An ESP32 desk dashboard for keeping an eye on Claude Code and Codex usage.
 
-It runs on a [Waveshare ESP32-S3-Touch-AMOLED-2.16](https://www.waveshare.com/esp32-s3-touch-amoled-2.16.htm?&aff_id=149786) as well as a few other alternative boards and pairs over Bluetooth, the splash screen plays pixel-art Clawd animations that get
-busier when your usage rate climbs. The two side buttons send Space and
-Shift+Tab over BLE HID for Claude Code's voice mode and mode-toggle shortcuts.
+DeskPulse started as a fork of [HermannBjorgvin/Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter).
+The original project focuses on a simple Claude Code usage desk toy; this fork
+is maintained separately for multi-provider usage monitoring. The repository
+intentionally remains a GitHub fork so that the upstream origin stays visible.
+See [UPSTREAM.md](UPSTREAM.md) for the fork history and attribution notes.
+
+It runs on a [Waveshare ESP32-S3-Touch-AMOLED-2.16](https://www.waveshare.com/esp32-s3-touch-amoled-2.16.htm?&aff_id=149786) as well as a few other alternative boards and pairs over Bluetooth. The splash screen plays pixel-art Clawd animations that get busier when your usage rate climbs. The two side buttons send Space and Shift+Tab over BLE HID for Claude Code's voice mode and mode-toggle shortcuts.
+
+Some firmware and daemon identifiers still use the original `Claude Controller`
+or `claude-usage-daemon` names for compatibility with existing BLE pairing,
+launchd, and systemd setups.
 
 |              Usage meter              |              Clawd animation screen              |
 | :-----------------------------------: | :----------------------------------------------: |
@@ -14,12 +22,25 @@ The Clawd animations come from [claudepix](https://claudepix.vercel.app), [@amaa
 
 ## Screens
 
-The device boots into the splash and stays there until you press the middle (PWR) button, which cycles between Usage and Bluetooth. Tap the screen anywhere (except the Reset zone on the Bluetooth screen) to flip back to the splash; tap again to dismiss it.
+The device boots into the splash and stays there until you press the middle
+(PWR) button. The main screen cycle is:
 
-|              Splash               |              Usage              |                Bluetooth                |
-| :-------------------------------: | :-----------------------------: | :-------------------------------------: |
+```text
+Usage -> Claude -> Codex -> Bluetooth -> Usage
+```
+
+Tap the screen anywhere (except the Reset zone on the Bluetooth screen) to flip
+back to the splash; tap again to dismiss it.
+
+|              Splash               |                    Usage                    |                    Bluetooth                    |
+| :-------------------------------: | :-----------------------------------------: | :---------------------------------------------: |
 | ![Splash](screenshots/splash.png) | ![Usage](screenshots/usage.png) | ![Bluetooth](screenshots/bluetooth.png) |
-|   Splash; touch-toggle anytime    | Session and weekly utilization  |    Connection status and bond reset     |
+|   Splash; touch-toggle anytime    | Claude and Codex utilization together       | Connection status, address, and bond reset      |
+
+|                    Claude                    |                    Codex                    |
+| :------------------------------------------: | :-----------------------------------------: |
+| ![Claude](screenshots/claude.png) | ![Codex](screenshots/codex.png) |
+|        Claude-only 5h and weekly usage        |        Codex-only 5h and weekly usage       |
 
 While the splash is up, the middle button cycles animations instead of screens. The firmware also auto-rotates every 20 s within the current usage-rate group, so a long stretch on the splash isn't just one Clawd on loop.
 
@@ -58,7 +79,9 @@ The board env name is required. Run `./flash-mac.sh` with no args to see the ava
 
 ### Pair the device
 
-After flashing, open **System Settings → Bluetooth** and click *Connect* next to "Clawdmeter". The daemon will discover it on its next scan (~30 s).
+After flashing, open **System Settings → Bluetooth** and click *Connect* next
+to "Claude Controller" (the legacy BLE name). The daemon will discover it on
+its next scan (~30 s).
 
 ### Install the daemon
 
@@ -85,7 +108,7 @@ The script updates `daemon/config.toml` and reloads the LaunchAgent. The setting
 Provider selection priority:
 
 1. CLI flag: `daemon/.venv/bin/python daemon/claude_usage_daemon.py --provider both`
-2. Environment variable: `CLAWDMETER_PROVIDER=both`
+2. Environment variable: `CLAWDMETER_PROVIDER=both` (legacy name)
 3. Config file: `daemon/config.toml`
 
 Claude uses the existing Claude Code OAuth credential store. Codex uses ChatGPT OAuth credentials from `~/.codex/auth.json` or the Codex keychain store (`Codex Auth`). Codex API-key mode does not have 5-hour/weekly subscription limits, so the daemon reports an unavailable status instead of fabricating values. In `both` mode the daemon sends legacy top-level Claude fields plus compact nested `c` (Claude) and `x` (Codex) fields for the dual UI.
@@ -112,7 +135,8 @@ The board env name is required. Run `./flash.sh` with no args to see the availab
 
 ### Pair the device
 
-After flashing, the device advertises as "Claudemeter". Pair it once:
+After flashing, the device advertises as "Claude Controller" (the legacy BLE
+name). Pair it once:
 
 ```bash
 # Scan for the device
@@ -155,7 +179,7 @@ The board has three side buttons. Left and right do the same thing on every scre
 | Button           | GPIO         | Function                                                       |
 | ---------------- | ------------ | -------------------------------------------------------------- |
 | **Left**         | GPIO 0       | Hold to send Space (Claude Code voice-mode push-to-talk)       |
-| **Middle** (PWR) | AXP2101 PKEY | Cycle screens (Usage ↔ Bluetooth); on splash, cycle animations |
+| **Middle** (PWR) | AXP2101 PKEY | Cycle screens (Usage -> Claude -> Codex -> Bluetooth); on splash, cycle animations |
 | **Right**        | GPIO 18      | Press to send Shift+Tab (Claude Code mode toggle)              |
 
 Space and Shift+Tab go out as standard BLE HID keyboard reports, so they trigger in whatever window has focus on the paired host — not just Claude Code.
@@ -273,10 +297,11 @@ See `tools/README.md` for details.
 
 ## Credits
 
+- DeskPulse started as a fork of [HermannBjorgvin/Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter). See [UPSTREAM.md](UPSTREAM.md).
 - Pixel-art Clawd animation by [@amaanbuilds](https://x.com/amaanbuilds), sourced from [claudepix.vercel.app](https://claudepix.vercel.app). Frame data and palettes scraped + converted by the tooling in `tools/`.
 - Lucide icon set ([lucide.dev](https://lucide.dev), MIT) for bluetooth and battery UI glyphs.
 - Anthropic brand fonts (Tiempos Text, Styrene B) — see licensing warning below.
 
 ## Licensing gray area warning
 
-The software in this repository uses and adheres to the Anthropic brand guidelines and uses the same proprietary fonts that Anthropic has a license for but this software uses without permission as well as using assets from Anthropic such as the copyrighted Clawd mascot so even though the code in this repo is non-proprietary I will not license it myself under a copyleft license since this repo includes proprietary fonts and copyrighted assets. Please be aware of this if you fork or copy the code from this repo. **You have been warned!**
+This fork inherits the upstream licensing gray area: the software uses Anthropic brand styling, proprietary fonts, and copyrighted Clawd mascot artwork. The upstream repository did not include an explicit LICENSE file at the point this fork diverged. Please be aware of this if you fork or copy code or assets from this repository. **You have been warned!**
