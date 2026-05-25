@@ -1,101 +1,73 @@
 # DeskPulse
 
-An ESP32 desk dashboard for keeping an eye on Claude Code and Codex usage.
+ESP32 desk-side usage monitor for Claude Code and Codex.
 
-DeskPulse started as a fork of [HermannBjorgvin/Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter).
-The original project focuses on a simple Claude Code usage desk toy; this fork
-is maintained separately for multi-provider usage monitoring. The repository
-intentionally remains a GitHub fork so that the upstream origin stays visible.
-See [UPSTREAM.md](UPSTREAM.md) for the fork history and attribution notes.
+DeskPulse is maintained as a separate multi-provider fork of
+[HermannBjorgvin/Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter).
+The GitHub fork relationship is intentionally retained. See
+[UPSTREAM.md](UPSTREAM.md) for origin, attribution, and license notes.
 
-It runs on a [Waveshare ESP32-S3-Touch-AMOLED-2.16](https://www.waveshare.com/esp32-s3-touch-amoled-2.16.htm?&aff_id=149786) as well as a few other alternative boards and pairs over Bluetooth. The splash screen plays pixel-art Clawd animations that get busier when your usage rate climbs. The two side buttons send Space and Shift+Tab over BLE HID for Claude Code's voice mode and mode-toggle shortcuts.
+Some runtime names still use the original `Claude Controller` and
+`claude-usage-daemon` identifiers for compatibility with existing BLE pairing
+and service setup.
 
-Some firmware and daemon identifiers still use the original `Claude Controller`
-or `claude-usage-daemon` names for compatibility with existing BLE pairing,
-launchd, and systemd setups.
-
-|              Usage meter              |              Clawd animation screen              |
-| :-----------------------------------: | :----------------------------------------------: |
-| ![Usage meter](assets/demo.jpeg) | ![Clawd animation screen](assets/demo.gif) |
-
-The Clawd animations come from [claudepix](https://claudepix.vercel.app), [@amaanbuilds](https://x.com/amaanbuilds)'s library of pixel-art Clawd sprites, check it out, it's lovely.
-
-## Screens
-
-The device boots into the splash and stays there until you press the middle
-(PWR) button. The main screen cycle is:
-
-```text
-Usage -> Claude -> Codex -> Bluetooth -> Usage
-```
-
-Tap the screen anywhere (except the Reset zone on the Bluetooth screen) to flip
-back to the splash; tap again to dismiss it.
-
-|              Splash               |                    Usage                    |                    Bluetooth                    |
-| :-------------------------------: | :-----------------------------------------: | :---------------------------------------------: |
-| ![Splash](screenshots/splash.png) | ![Usage](screenshots/usage.png) | ![Bluetooth](screenshots/bluetooth.png) |
-|   Splash; touch-toggle anytime    | Claude and Codex utilization together       | Connection status, address, and bond reset      |
-
-|                    Claude                    |                    Codex                    |
-| :------------------------------------------: | :-----------------------------------------: |
-| ![Claude](screenshots/claude.png) | ![Codex](screenshots/codex.png) |
-|        Claude-only 5h and weekly usage        |        Codex-only 5h and weekly usage       |
-
-While the splash is up, the middle button cycles animations instead of screens. The firmware also auto-rotates every 20 s within the current usage-rate group, so a long stretch on the splash isn't just one Clawd on loop.
-
-## Hardware
-
-Boards supported out of the box:
+## Supported Hardware
 
 - [Waveshare ESP32-S3-Touch-AMOLED-2.16](https://www.waveshare.com/esp32-s3-touch-amoled-2.16.htm?&aff_id=149786)
-- [Waveshare ESP32-C6-Touch-AMOLED-2.16](https://www.waveshare.com/esp32-c6-touch-amoled-2.16.htm?&aff_id=149786) 
+- [Waveshare ESP32-C6-Touch-AMOLED-2.16](https://www.waveshare.com/esp32-c6-touch-amoled-2.16.htm?&aff_id=149786)
 - [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm?&aff_id=149786)
 
-> Please check if a pull request exists for your alternative hardware port before opening a new one, providing QA feedback and testing on the same hardware is more valuable than duplicate pull requests.
+Board env names:
 
-**Porting to another board:** the firmware is a thin HAL with per-board folders under `firmware/src/boards/`. Drop in a new folder and a new PlatformIO env — `main.cpp`, `ui.cpp`, and `splash.cpp` never need to change. See [`docs/porting/adding-a-board.md`](docs/porting/adding-a-board.md) for the walk-through and [`docs/porting/hal-contract.md`](docs/porting/hal-contract.md) for the interfaces a port must implement.
+- `waveshare_amoled_216`
+- `waveshare_amoled_18`
 
-## Prerequisites
+## Requirements
 
-- Linux (tested on Ubuntu) or macOS
-- [PlatformIO CLI](https://docs.platformio.org/en/latest/core/installation/index.html)
-- Linux: `curl`, `bluetoothctl`, `busctl` (BlueZ Bluetooth stack)
-- macOS: `python3` (the installer sets up a venv with `bleak` and `httpx`)
-- Claude Code and/or Codex with an active subscription
+- PlatformIO CLI
+- macOS: `python3`
+- Linux: `curl`, `bluetoothctl`, `busctl`
+- Claude Code login for Claude usage
+- Codex / ChatGPT login for Codex usage
 
-## macOS installation
+If `pio` is not on your PATH, try `~/.platformio/penv/bin/pio`.
 
-The macOS host pieces — Python daemon, LaunchAgent, and flash helper — were ported by [Chris Davidson (@lorddavidson)](https://github.com/lorddavidson). Thanks Chris!
+## macOS Setup
 
-### Flash the firmware
+### 1. Flash firmware
 
 ```bash
-./flash-mac.sh waveshare_amoled_216                       # auto-detects /dev/cu.usbmodem*
-./flash-mac.sh waveshare_amoled_18  /dev/cu.usbmodem1101  # or pass an explicit USB serial port
+./flash-mac.sh waveshare_amoled_216
+./flash-mac.sh waveshare_amoled_18 /dev/cu.usbmodem1101
 ```
 
-The board env name is required. Run `./flash-mac.sh` with no args to see the available envs (scraped from `firmware/platformio.ini`).
+The first command auto-detects `/dev/cu.usbmodem*`. Pass the serial port
+explicitly if more than one device is connected.
 
-### Pair the device
+### 2. Pair Bluetooth
 
-After flashing, open **System Settings → Bluetooth** and click *Connect* next
-to "Claude Controller" (the legacy BLE name). The daemon will discover it on
-its next scan (~30 s).
+After flashing, open **System Settings -> Bluetooth** and connect to
+`Claude Controller`.
 
-### Install the daemon
+The daemon discovers the device by that BLE name.
 
-The daemon reads the selected provider OAuth tokens, polls usage every 60 s, and pushes it to the display over BLE. The macOS installer creates a local `provider = "both"` config by default, which shows Claude and Codex together on the Usage screen.
+### 3. Install daemon
 
 ```bash
 ./install-mac.sh
 ```
 
-The installer creates a Python venv in `daemon/.venv/`, installs `bleak` and `httpx`, creates `daemon/config.toml` if it does not exist, renders a LaunchAgent into `~/Library/LaunchAgents/com.user.claude-usage-daemon.plist`, and loads it. The first run is launched interactively so macOS prompts for Bluetooth permission.
+The installer:
 
-### Show Claude, Codex, or both
+- creates `daemon/.venv/`
+- installs `bleak` and `httpx`
+- creates `daemon/config.toml` if missing
+- installs `~/Library/LaunchAgents/com.user.claude-usage-daemon.plist`
+- starts the LaunchAgent
 
-The firmware accepts the original single-provider BLE JSON and an extended dual-provider payload. New firmware shows Claude and Codex together when the provider is `both`.
+On first run, allow the macOS Bluetooth permission prompt.
+
+### 4. Choose provider
 
 ```bash
 ./switch-provider.sh both
@@ -103,205 +75,95 @@ The firmware accepts the original single-provider BLE JSON and an extended dual-
 ./switch-provider.sh codex
 ```
 
-The script updates `daemon/config.toml` and reloads the LaunchAgent. The setting is preserved across daemon restarts, re-login, and reinstall because `install-mac.sh` does not overwrite an existing config file.
+The provider setting is stored in `daemon/config.toml`.
 
-Provider selection priority:
+Provider priority:
 
 1. CLI flag: `daemon/.venv/bin/python daemon/claude_usage_daemon.py --provider both`
-2. Environment variable: `CLAWDMETER_PROVIDER=both` (legacy name)
+2. Environment variable: `CLAWDMETER_PROVIDER=both`
 3. Config file: `daemon/config.toml`
+4. Built-in fallback: `claude`
 
-Claude uses the existing Claude Code OAuth credential store. Codex uses ChatGPT OAuth credentials from `~/.codex/auth.json` or the Codex keychain store (`Codex Auth`). Codex API-key mode does not have 5-hour/weekly subscription limits, so the daemon reports an unavailable status instead of fabricating values. In `both` mode the daemon sends legacy top-level Claude fields plus compact nested `c` (Claude) and `x` (Codex) fields for the dual UI.
-
-Useful commands:
+### 5. Check logs
 
 ```bash
-launchctl list | grep claude-usage                                          # check it's running
-tail -F ~/Library/Logs/claude-usage-daemon.out.log                          # live logs
-launchctl unload ~/Library/LaunchAgents/com.user.claude-usage-daemon.plist  # stop
-launchctl load -w ~/Library/LaunchAgents/com.user.claude-usage-daemon.plist # start
+tail -F ~/Library/Logs/claude-usage-daemon.out.log
 ```
 
-## Linux installation
+In `both` mode, a healthy payload includes:
 
-### Flash the firmware
-
-```bash
-./flash.sh waveshare_amoled_216                  # defaults to /dev/ttyACM0
-./flash.sh waveshare_amoled_18  /dev/ttyACM1     # or pass an explicit USB serial port
+```text
+"p":"both"
+"c":{...,"ok":true}
+"x":{...,"ok":true}
 ```
 
-The board env name is required. Run `./flash.sh` with no args to see the available envs (scraped from `firmware/platformio.ini`).
-
-### Pair the device
-
-After flashing, the device advertises as "Claude Controller" (the legacy BLE
-name). Pair it once:
+Useful service commands:
 
 ```bash
-# Scan for the device
+launchctl list | grep claude-usage
+launchctl unload ~/Library/LaunchAgents/com.user.claude-usage-daemon.plist
+launchctl load -w ~/Library/LaunchAgents/com.user.claude-usage-daemon.plist
+```
+
+## Linux Setup
+
+The Linux installer currently uses the legacy Claude-only shell daemon.
+
+### 1. Flash firmware
+
+```bash
+./flash.sh waveshare_amoled_216
+./flash.sh waveshare_amoled_18 /dev/ttyACM1
+```
+
+### 2. Pair Bluetooth
+
+```bash
 bluetoothctl scan le
-
-# When "Claude Controller" appears, pair and trust it
-bluetoothctl pair F4:12:FA:C0:8F:E5    # use your device's MAC
-bluetoothctl trust F4:12:FA:C0:8F:E5
+bluetoothctl pair <MAC>
+bluetoothctl trust <MAC>
 ```
 
-The MAC address is shown on the Bluetooth screen — press the middle (PWR) button to cycle to it.
+Pair the device named `Claude Controller`. The MAC address is also shown on the
+Bluetooth screen.
 
-### Install the daemon
-
-The daemon polls your Claude usage every 60 seconds and sends it to the display over BLE.
+### 3. Install daemon
 
 ```bash
 ./install.sh
 systemctl --user start claude-usage-daemon
 ```
 
-Check status: `systemctl --user status claude-usage-daemon`
-
-View logs: `journalctl --user -u claude-usage-daemon -f`
-
-## How it works
-
-1. The daemon reads the configured provider from CLI/env/config, defaulting to Claude.
-2. Claude reads the Claude Code OAuth token from the macOS Keychain (service `Claude Code-credentials`) on macOS, or from `~/.claude/.credentials.json` on Linux. It makes a minimal API call to `api.anthropic.com/v1/messages` and reads usage from response headers.
-3. Codex reads ChatGPT OAuth tokens from `~/.codex/auth.json` or the Codex keychain store and reads the 5-hour/weekly windows from the ChatGPT backend usage response.
-4. The daemon connects to the ESP32 over BLE and writes a JSON payload to the GATT RX characteristic.
-5. The firmware parses it and updates the LVGL dashboard.
-6. The firmware also tracks the rate of change of session % over a 5-minute window and picks splash animations from the matching mood group.
-7. The two side buttons are independent of all of this — they send Space and Shift+Tab as BLE HID keyboard input to the paired host directly.
-
-## Physical buttons
-
-The board has three side buttons. Left and right do the same thing on every screen; the middle button is screen-aware.
-
-| Button           | GPIO         | Function                                                       |
-| ---------------- | ------------ | -------------------------------------------------------------- |
-| **Left**         | GPIO 0       | Hold to send Space (Claude Code voice-mode push-to-talk)       |
-| **Middle** (PWR) | AXP2101 PKEY | Cycle screens (Usage -> Claude -> Codex -> Bluetooth); on splash, cycle animations |
-| **Right**        | GPIO 18      | Press to send Shift+Tab (Claude Code mode toggle)              |
-
-Space and Shift+Tab go out as standard BLE HID keyboard reports, so they trigger in whatever window has focus on the paired host — not just Claude Code.
-
-## BLE protocol
-
-The device advertises a custom GATT service alongside the standard HID keyboard service:
-
-|                            | UUID                                   |
-| -------------------------- | -------------------------------------- |
-| **Data Service**           | `4c41555a-4465-7669-6365-000000000001` |
-| RX Characteristic (write)  | `4c41555a-4465-7669-6365-000000000002` |
-| TX Characteristic (notify) | `4c41555a-4465-7669-6365-000000000003` |
-| **HID Service**            | `00001812-0000-1000-8000-00805f9b34fb` |
-
-JSON payload format (written to RX):
-
-```json
-{ "s": 45, "sr": 120, "w": 28, "wr": 7200, "st": "allowed", "ok": true }
-```
-
-Fields: `s` = session %, `sr` = session reset (minutes), `w` = weekly %, `wr` = weekly reset (minutes), `st` = status, `ok` = success flag.
-
-## Recompiling fonts
-
-The `firmware/src/font_*.c` files are pre-compiled LVGL bitmap fonts.
+Useful service commands:
 
 ```bash
-npm install -g lv_font_conv
+systemctl --user status claude-usage-daemon
+journalctl --user -u claude-usage-daemon -f
+systemctl --user restart claude-usage-daemon
+systemctl --user stop claude-usage-daemon
 ```
 
-Generate each one (one at a time — `lv_font_conv` doesn't like loop-driven invocations) with `--no-compress` (required for LVGL 9):
+## Screen Controls
 
-```bash
-# Tiempos Text (titles, 56px)
-lv_font_conv --font assets/TiemposText-400-Regular.otf -r 0x20-0x7E \
-  --size 56 --format lvgl --bpp 4 --no-compress \
-  -o firmware/src/font_tiempos_56.c --lv-include "lvgl.h"
+Main screen cycle:
 
-# Styrene B (large numbers 48, panel labels 28, small text 24, minimal 20)
-for size in 48 28 24 20; do
-  lv_font_conv --font assets/StyreneB-Regular.otf -r 0x20-0x7E \
-    --size $size --format lvgl --bpp 4 --no-compress \
-    -o firmware/src/font_styrene_${size}.c --lv-include "lvgl.h"
-done
-
-# DejaVu Sans Mono (32px, with spinner Unicode chars)
-lv_font_conv --font assets/DejaVuSansMono.ttf \
-  -r 0x20-0x7E,0xB7,0x2026,0x2722,0x2733,0x2736,0x273B,0x273D \
-  --size 32 --format lvgl --bpp 4 --no-compress \
-  -o firmware/src/font_mono_32.c --lv-include "lvgl.h"
+```text
+Usage -> Claude -> Codex -> Bluetooth -> Usage
 ```
 
-**Important:** `lv_font_conv` v1.5.3 outputs LVGL 8 format. Each generated file must be patched for LVGL 9 compatibility:
+Buttons:
 
-1. Remove `#if LVGL_VERSION_MAJOR >= 8` guards around `font_dsc` and the font struct
-2. Remove the `.cache` field from `font_dsc`
-3. Add `.release_glyph = NULL`, `.kerning = 0`, `.static_bitmap = 0` to the font struct
-4. Add `.fallback = NULL`, `.user_data = NULL` to the font struct
+| Button | Function |
+| ------ | -------- |
+| Left | Hold to send Space |
+| Middle / PWR | Cycle screens; on splash, cycle animations |
+| Right | Press to send Shift+Tab |
 
-Without these patches, fonts compile but render as invisible.
+Tap the screen to toggle between splash and the last non-splash screen.
 
-### CJK support
+## Development References
 
-`firmware/src/font_cjk_16.c` covers the full CJK Unified Ideographs basic
-block (U+4E00–U+9FFF, ~20k glyphs) plus ASCII, CJK punctuation, and
-halfwidth/fullwidth forms. Generated from [Noto Sans CJK SC](https://github.com/notofonts/noto-cjk)
-(SIL OFL 1.1) at 16px, 2bpp:
-
-```bash
-lv_font_conv --font NotoSansCJKsc-Regular.otf --size 16 --bpp 2 \
-  --no-compress --format lvgl --lv-include 'lvgl.h' \
-  -r '0x20-0x7E,0xB7,0x2014,0x2018-0x2019,0x201C-0x201D,0x2026,0x3000-0x303F,0x4E00-0x9FFF,0xFF00-0xFFEF' \
-  -o firmware/src/font_cjk_16.c
-```
-
-Then apply the four LVGL 9 patches above. Because the font has >65k of
-glyph bitmap data, the build needs `-DLV_FONT_FMT_TXT_LARGE=1` in
-`platformio.ini` build flags so font descriptor offsets switch from
-16-bit to 32-bit.
-
-The CJK font is used for the Activity screen's user-prompt row and todo
-content rows. The headline (28pt Styrene B) and titles stay ASCII-only
-to preserve the brand font — Chinese text in those slots renders as
-empty boxes. Add a `font_cjk_28.c` if full coverage is needed (~1MB
-more flash).
-
-## Converting Lucide icons
-
-The UI uses a small set of [Lucide](https://lucide.dev) icons (bluetooth + battery states) converted to RGB565 / RGB565A8 C arrays for LVGL.
-
-```bash
-node tools/png_to_lvgl.js assets/icon_bluetooth_48.png icon_bluetooth_data ICON_BLUETOOTH_WIDTH ICON_BLUETOOTH_HEIGHT
-```
-
-Default tint is white (`0xFFFFFF`); Lucide PNGs ship as black-on-transparent and would render invisible against the dark UI without it. Pass `--no-tint` for pre-coloured artwork like the logo. Battery icons use RGB565A8 (alpha plane) so they blend cleanly over the splash; the rest are baked RGB565 over the panel colour. Paste the converter output into `firmware/src/icons.h`.
-
-## Splash animations
-
-The animations come from [claudepix.vercel.app](https://claudepix.vercel.app),
-a library of Clawd sprites. `tools/scrape_claudepix.js` evaluates the
-site's JavaScript in a Node VM to pull out frame data and palettes, then
-`tools/convert_to_c.js` turns everything into RGB565 C arrays and writes
-`firmware/src/splash_animations.h`.
-
-To re-pull (e.g. when the source library updates):
-
-```bash
-node tools/scrape_claudepix.js
-node tools/convert_to_c.js
-pio run -d firmware -t upload
-```
-
-See `tools/README.md` for details.
-
-## Credits
-
-- DeskPulse started as a fork of [HermannBjorgvin/Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter). See [UPSTREAM.md](UPSTREAM.md).
-- Pixel-art Clawd animation by [@amaanbuilds](https://x.com/amaanbuilds), sourced from [claudepix.vercel.app](https://claudepix.vercel.app). Frame data and palettes scraped + converted by the tooling in `tools/`.
-- Lucide icon set ([lucide.dev](https://lucide.dev), MIT) for bluetooth and battery UI glyphs.
-- Anthropic brand fonts (Tiempos Text, Styrene B) — see licensing warning below.
-
-## Licensing gray area warning
-
-This fork inherits the upstream licensing gray area: the software uses Anthropic brand styling, proprietary fonts, and copyrighted Clawd mascot artwork. The upstream repository did not include an explicit LICENSE file at the point this fork diverged. Please be aware of this if you fork or copy code or assets from this repository. **You have been warned!**
+- Board porting: [docs/porting/adding-a-board.md](docs/porting/adding-a-board.md)
+- HAL contract: [docs/porting/hal-contract.md](docs/porting/hal-contract.md)
+- Upstream origin and attribution: [UPSTREAM.md](UPSTREAM.md)
