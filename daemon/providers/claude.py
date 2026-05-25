@@ -87,11 +87,20 @@ class ClaudeProvider:
         blob = blob.strip()
         if not blob:
             return None
-        try:
-            parsed = json.loads(blob)
-        except json.JSONDecodeError:
-            return None
-        return parsed if isinstance(parsed, dict) else None
+        candidates = [blob]
+        if re.fullmatch(r"(?:[0-9A-Fa-f]{2})+", blob):
+            try:
+                candidates.append(bytes.fromhex(blob).decode())
+            except UnicodeDecodeError:
+                pass
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        return None
 
     def _extract_credentials(self, auth_payload: _AuthPayload) -> Credentials | None:
         """Pull OAuth tokens out of a Claude Code credentials blob."""
@@ -119,6 +128,11 @@ class ClaudeProvider:
                         storage=auth_payload.storage,
                     )
         blob = auth_payload.blob.strip()
+        if re.fullmatch(r"(?:[0-9A-Fa-f]{2})+", blob):
+            try:
+                blob = bytes.fromhex(blob).decode()
+            except UnicodeDecodeError:
+                pass
         m = re.search(r'"accessToken"\s*:\s*"([^"]+)"', blob)
         if m:
             refresh_match = re.search(r'"refreshToken"\s*:\s*"([^"]+)"', blob)
