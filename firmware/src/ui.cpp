@@ -371,6 +371,7 @@ static void make_codex_mark(lv_obj_t* panel, ProviderUsageWidgets* widgets) {
 
     lv_obj_t* img = lv_image_create(mark);
     lv_image_set_src(img, &codex_icon_dsc);
+    lv_image_set_scale(img, (uint32_t)L.usage_icon_size * 256 / ICON_CODEX_W);
     lv_obj_center(img);
     widgets->mark = mark;
 }
