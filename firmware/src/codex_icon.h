@@ -1,7 +1,9 @@
 #pragma once
 #include <stdint.h>
 
-// Generated from Codex.app icon.icns mask; soft gradient, white app-icon background removed.
+// Generated from the Codex.app icon.icns mask with the white app-icon
+// background removed. Data is LVGL RGB565A8: 64x64 RGB565 pixels followed
+// by 64x64 alpha bytes, consumed through init_icon_dsc_rgb565a8().
 #define ICON_CODEX_W 64
 #define ICON_CODEX_H 64
 static const uint8_t icon_codex_data[12288] = {

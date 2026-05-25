@@ -35,6 +35,7 @@ SCAN_TIMEOUT = 8.0
 SAVED_ADDR_FILE = Path.home() / ".config" / "claude-usage-monitor" / "ble-address"
 CONFIG_PATH = Path(__file__).with_name("config.toml")
 VALID_PROVIDERS = {"claude", "codex", "both"}
+DUAL_PROVIDER_KEYS = {"claude": "c", "codex": "x"}
 
 
 def log(msg: str) -> None:
@@ -84,6 +85,21 @@ def usage_to_payload(usage: Usage) -> dict:
 
 def failed_usage(status: str) -> Usage:
     return Usage(0, 0, 0, 0, status, False)
+
+
+def single_provider_payload(provider: Provider, usage: Usage) -> dict:
+    payload = usage_to_payload(usage)
+    payload["p"] = provider.name
+    return payload
+
+
+def dual_provider_payload(usages: dict[str, Usage]) -> dict:
+    claude_usage = usages.get("claude", failed_usage("claude_missing"))
+    payload = usage_to_payload(claude_usage)
+    payload["p"] = "both"
+    for name, key in DUAL_PROVIDER_KEYS.items():
+        payload[key] = usage_to_payload(usages.get(name, failed_usage(f"{name}_missing")))
+    return payload
 
 
 def load_config_provider() -> str | None:
@@ -144,9 +160,7 @@ async def fetch_usage_payload(providers: list[Provider]) -> dict | None:
         usage = await providers[0].fetch_usage()
         if usage is None:
             return None
-        payload = usage_to_payload(usage)
-        payload["p"] = providers[0].name
-        return payload
+        return single_provider_payload(providers[0], usage)
 
     results = await asyncio.gather(
         *(provider.fetch_usage() for provider in providers),
@@ -162,13 +176,7 @@ async def fetch_usage_payload(providers: list[Provider]) -> dict | None:
         else:
             by_name[provider.name] = result
 
-    claude_usage = by_name.get("claude", failed_usage("claude_missing"))
-    codex_usage = by_name.get("codex", failed_usage("codex_missing"))
-    payload = usage_to_payload(claude_usage)
-    payload["p"] = "both"
-    payload["c"] = usage_to_payload(claude_usage)
-    payload["x"] = usage_to_payload(codex_usage)
-    return payload
+    return dual_provider_payload(by_name)
 
 
 class Session:

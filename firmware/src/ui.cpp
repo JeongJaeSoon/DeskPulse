@@ -259,6 +259,23 @@ static void set_header_icon(const lv_image_dsc_t* dsc) {
     lv_obj_clear_flag(header_icon_img, LV_OBJ_FLAG_HIDDEN);
 }
 
+static const lv_image_dsc_t* header_icon_for_screen(screen_t screen) {
+    switch (screen) {
+    case SCREEN_USAGE_CLAUDE: return &logo_dsc;
+    case SCREEN_USAGE_CODEX:  return &codex_icon_dsc;
+    case SCREEN_BLUETOOTH:    return &bluetooth_icon_dsc;
+    default:                  return nullptr;
+    }
+}
+
+static const lv_image_dsc_t* provider_icon_for_usage(UsageProvider provider) {
+    return provider == USAGE_PROVIDER_CODEX ? &codex_icon_dsc : &logo_dsc;
+}
+
+static int provider_icon_source_w(UsageProvider provider) {
+    return provider == USAGE_PROVIDER_CODEX ? ICON_CODEX_W : LOGO_WIDTH;
+}
+
 // Forward decls — callbacks defined near ui_show_screen below
 static void global_click_cb(lv_event_t* e);
 static void ble_reset_click_cb(lv_event_t* e);
@@ -321,6 +338,13 @@ static void init_battery_icons(void) {
     init_icon_dsc_rgb565a8(&battery_dscs[4], ICON_BATTERY_CHARGING_W, ICON_BATTERY_CHARGING_H, icon_battery_charging_data);
 }
 
+static void init_image_descriptors(void) {
+    init_icon_dsc_rgb565a8(&logo_dsc, LOGO_WIDTH, LOGO_HEIGHT, logo_data);
+    init_icon_dsc_rgb565a8(&codex_icon_dsc, ICON_CODEX_W, ICON_CODEX_H, icon_codex_data);
+    init_icon_dsc(&bluetooth_icon_dsc, ICON_BLUETOOTH_W, ICON_BLUETOOTH_H, icon_bluetooth_data);
+    init_battery_icons();
+}
+
 // ======== Usage Screen ========
 
 static void style_metric_label(lv_obj_t* lbl, const char* text) {
@@ -344,7 +368,8 @@ static lv_obj_t* make_pill(lv_obj_t* parent, const char* text) {
     return lbl;
 }
 
-static void make_claude_mark(lv_obj_t* panel, ProviderUsageWidgets* widgets) {
+static void make_provider_mark(lv_obj_t* panel, ProviderUsageWidgets* widgets,
+                               UsageProvider provider) {
     lv_obj_t* mark = lv_obj_create(panel);
     lv_obj_set_size(mark, L.usage_icon_size, L.usage_icon_size);
     lv_obj_set_pos(mark, 0, 0);
@@ -354,24 +379,9 @@ static void make_claude_mark(lv_obj_t* panel, ProviderUsageWidgets* widgets) {
     lv_obj_clear_flag(mark, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* img = lv_image_create(mark);
-    lv_image_set_src(img, &logo_dsc);
-    lv_image_set_scale(img, (uint32_t)L.usage_icon_size * 256 / LOGO_WIDTH);
-    lv_obj_center(img);
-    widgets->mark = mark;
-}
-
-static void make_codex_mark(lv_obj_t* panel, ProviderUsageWidgets* widgets) {
-    lv_obj_t* mark = lv_obj_create(panel);
-    lv_obj_set_size(mark, L.usage_icon_size, L.usage_icon_size);
-    lv_obj_set_pos(mark, 0, 0);
-    lv_obj_set_style_bg_opa(mark, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(mark, 0, 0);
-    lv_obj_set_style_pad_all(mark, 0, 0);
-    lv_obj_clear_flag(mark, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* img = lv_image_create(mark);
-    lv_image_set_src(img, &codex_icon_dsc);
-    lv_image_set_scale(img, (uint32_t)L.usage_icon_size * 256 / ICON_CODEX_W);
+    lv_image_set_src(img, provider_icon_for_usage(provider));
+    lv_image_set_scale(img, (uint32_t)L.usage_icon_size * 256 /
+                            provider_icon_source_w(provider));
     lv_obj_center(img);
     widgets->mark = mark;
 }
@@ -382,8 +392,7 @@ static void make_provider_usage_panel(lv_obj_t* parent, ProviderUsageWidgets* wi
     widgets->panel = make_panel(parent, L.margin, y, L.content_w, h);
     const int inner_w = L.content_w - 32;
 
-    if (provider == USAGE_PROVIDER_CODEX) make_codex_mark(widgets->panel, widgets);
-    else                                  make_claude_mark(widgets->panel, widgets);
+    make_provider_mark(widgets->panel, widgets, provider);
 
     widgets->name = lv_label_create(widgets->panel);
     lv_label_set_text(widgets->name, name);
@@ -615,10 +624,7 @@ void ui_init(void) {
     lv_obj_set_style_bg_color(scr, COL_BG, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
-    init_icon_dsc_rgb565a8(&logo_dsc, LOGO_WIDTH, LOGO_HEIGHT, logo_data);
-    init_icon_dsc_rgb565a8(&codex_icon_dsc, ICON_CODEX_W, ICON_CODEX_H, icon_codex_data);
-    init_icon_dsc(&bluetooth_icon_dsc, ICON_BLUETOOTH_W, ICON_BLUETOOTH_H, icon_bluetooth_data);
-    init_battery_icons();
+    init_image_descriptors();
 
     init_usage_screen(scr);
     init_bluetooth_screen(scr);
@@ -637,74 +643,89 @@ void ui_init(void) {
     lv_obj_set_pos(battery_img, L.scr_w - 48 - L.margin, L.title_y);
 }
 
+static void set_usage_bar(lv_obj_t* bar, int pct, lv_color_t color) {
+    lv_bar_set_value(bar, pct, LV_ANIM_ON);
+    lv_obj_set_style_bg_color(bar, color, LV_PART_INDICATOR);
+}
+
+static void clear_dual_provider_widgets(ProviderUsageWidgets* widgets) {
+    lv_label_set_text(widgets->status, "waiting");
+    lv_obj_set_style_text_color(widgets->status, COL_DIM, 0);
+    lv_label_set_text(widgets->session_pct, "--%");
+    lv_label_set_text(widgets->weekly_pct, "--%");
+    lv_label_set_text(widgets->session_reset, "--");
+    lv_label_set_text(widgets->weekly_reset, "--");
+    set_usage_bar(widgets->session_bar, 0, COL_DIM);
+    set_usage_bar(widgets->weekly_bar, 0, COL_DIM);
+}
+
+static void clear_single_provider_widgets(SingleProviderUsageWidgets* widgets) {
+    if (!widgets->root) return;
+    lv_label_set_text(widgets->session_pct, "--%");
+    lv_label_set_text(widgets->weekly_pct, "--%");
+    lv_label_set_text(widgets->session_reset, "--");
+    lv_label_set_text(widgets->weekly_reset, "--");
+    set_usage_bar(widgets->session_bar, 0, COL_DIM);
+    set_usage_bar(widgets->weekly_bar, 0, COL_DIM);
+}
+
+static void update_dual_provider_widgets(ProviderUsageWidgets* widgets,
+                                         const ProviderUsageData* usage,
+                                         int session_pct, int weekly_pct,
+                                         const char* session_reset,
+                                         const char* weekly_reset) {
+    lv_label_set_text_fmt(widgets->session_pct, "%d%%", session_pct);
+    lv_label_set_text_fmt(widgets->weekly_pct, "%d%%", weekly_pct);
+    set_usage_bar(widgets->session_bar, session_pct, pct_color(usage->session_pct));
+    set_usage_bar(widgets->weekly_bar, weekly_pct, pct_color(usage->weekly_pct));
+    lv_label_set_text(widgets->session_reset, session_reset);
+    lv_label_set_text(widgets->weekly_reset, weekly_reset);
+    lv_label_set_text(widgets->status, usage->ok ? usage->status : "error");
+    lv_obj_set_style_text_color(widgets->status, usage->ok ? COL_GREEN : COL_RED, 0);
+}
+
+static void update_single_provider_widgets(SingleProviderUsageWidgets* widgets,
+                                           const ProviderUsageData* usage,
+                                           int session_pct, int weekly_pct,
+                                           const char* session_reset,
+                                           const char* weekly_reset) {
+    if (!widgets->root) return;
+    lv_label_set_text_fmt(widgets->session_pct, "%d%%", session_pct);
+    lv_label_set_text_fmt(widgets->weekly_pct, "%d%%", weekly_pct);
+    set_usage_bar(widgets->session_bar, session_pct, pct_color(usage->session_pct));
+    set_usage_bar(widgets->weekly_bar, weekly_pct, pct_color(usage->weekly_pct));
+    lv_label_set_text(widgets->session_reset, session_reset);
+    lv_label_set_text(widgets->weekly_reset, weekly_reset);
+}
+
+static void update_provider_usage_widgets(ProviderUsageWidgets* dual,
+                                          SingleProviderUsageWidgets* single,
+                                          const ProviderUsageData* usage) {
+    if (!usage->valid) {
+        clear_dual_provider_widgets(dual);
+        clear_single_provider_widgets(single);
+        return;
+    }
+
+    const int session_pct = (int)(usage->session_pct + 0.5f);
+    const int weekly_pct = (int)(usage->weekly_pct + 0.5f);
+    char session_reset[24];
+    char weekly_reset[24];
+    format_reset_short(usage->session_reset_mins, session_reset, sizeof(session_reset));
+    format_reset_short(usage->weekly_reset_mins, weekly_reset, sizeof(weekly_reset));
+
+    update_dual_provider_widgets(dual, usage, session_pct, weekly_pct,
+                                 session_reset, weekly_reset);
+    update_single_provider_widgets(single, usage, session_pct, weekly_pct,
+                                   session_reset, weekly_reset);
+}
+
 void ui_update(const UsageData* data) {
     if (!data->valid) return;
 
     for (int i = 0; i < USAGE_PROVIDER_COUNT; i++) {
-        const ProviderUsageData* usage = &data->providers[i];
-        ProviderUsageWidgets* widgets = &dual_widgets[i];
-        SingleProviderUsageWidgets* single = &single_widgets[i];
-
-        if (!usage->valid) {
-            lv_label_set_text(widgets->status, "waiting");
-            lv_obj_set_style_text_color(widgets->status, COL_DIM, 0);
-            lv_label_set_text(widgets->session_pct, "--%");
-            lv_label_set_text(widgets->weekly_pct, "--%");
-            lv_label_set_text(widgets->session_reset, "--");
-            lv_label_set_text(widgets->weekly_reset, "--");
-            lv_bar_set_value(widgets->session_bar, 0, LV_ANIM_ON);
-            lv_bar_set_value(widgets->weekly_bar, 0, LV_ANIM_ON);
-            lv_obj_set_style_bg_color(widgets->session_bar, COL_DIM, LV_PART_INDICATOR);
-            lv_obj_set_style_bg_color(widgets->weekly_bar, COL_DIM, LV_PART_INDICATOR);
-
-            if (single->root) {
-                lv_label_set_text(single->session_pct, "--%");
-                lv_label_set_text(single->weekly_pct, "--%");
-                lv_label_set_text(single->session_reset, "--");
-                lv_label_set_text(single->weekly_reset, "--");
-                lv_bar_set_value(single->session_bar, 0, LV_ANIM_ON);
-                lv_bar_set_value(single->weekly_bar, 0, LV_ANIM_ON);
-                lv_obj_set_style_bg_color(single->session_bar, COL_DIM, LV_PART_INDICATOR);
-                lv_obj_set_style_bg_color(single->weekly_bar, COL_DIM, LV_PART_INDICATOR);
-            }
-            continue;
-        }
-
-        int s_pct = (int)(usage->session_pct + 0.5f);
-        int w_pct = (int)(usage->weekly_pct + 0.5f);
-        lv_label_set_text_fmt(widgets->session_pct, "%d%%", s_pct);
-        lv_label_set_text_fmt(widgets->weekly_pct, "%d%%", w_pct);
-        lv_bar_set_value(widgets->session_bar, s_pct, LV_ANIM_ON);
-        lv_bar_set_value(widgets->weekly_bar, w_pct, LV_ANIM_ON);
-        lv_obj_set_style_bg_color(widgets->session_bar, pct_color(usage->session_pct),
-                                  LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(widgets->weekly_bar, pct_color(usage->weekly_pct),
-                                  LV_PART_INDICATOR);
-
-        char buf[24];
-        format_reset_short(usage->session_reset_mins, buf, sizeof(buf));
-        lv_label_set_text(widgets->session_reset, buf);
-        format_reset_short(usage->weekly_reset_mins, buf, sizeof(buf));
-        lv_label_set_text(widgets->weekly_reset, buf);
-
-        lv_label_set_text(widgets->status, usage->ok ? usage->status : "error");
-        lv_obj_set_style_text_color(widgets->status, usage->ok ? COL_GREEN : COL_RED, 0);
-
-        if (single->root) {
-            lv_label_set_text_fmt(single->session_pct, "%d%%", s_pct);
-            lv_label_set_text_fmt(single->weekly_pct, "%d%%", w_pct);
-            lv_bar_set_value(single->session_bar, s_pct, LV_ANIM_ON);
-            lv_bar_set_value(single->weekly_bar, w_pct, LV_ANIM_ON);
-            lv_obj_set_style_bg_color(single->session_bar, pct_color(usage->session_pct),
-                                      LV_PART_INDICATOR);
-            lv_obj_set_style_bg_color(single->weekly_bar, pct_color(usage->weekly_pct),
-                                      LV_PART_INDICATOR);
-
-            format_reset_short(usage->session_reset_mins, buf, sizeof(buf));
-            lv_label_set_text(single->session_reset, buf);
-            format_reset_short(usage->weekly_reset_mins, buf, sizeof(buf));
-            lv_label_set_text(single->weekly_reset, buf);
-        }
+        update_provider_usage_widgets(&dual_widgets[i], &single_widgets[i],
+                                      &data->providers[i]);
     }
 }
 
@@ -750,13 +771,15 @@ static void ble_reset_click_cb(lv_event_t* e) {
     ble_clear_bonds();
 }
 
-void ui_show_screen(screen_t screen) {
+static void hide_screen_roots(void) {
     lv_obj_add_flag(usage_dual_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(usage_claude_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(usage_codex_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(ble_container, LV_OBJ_FLAG_HIDDEN);
     splash_hide();
+}
 
+static void show_screen_root(screen_t screen) {
     switch (screen) {
     case SCREEN_SPLASH:       splash_show(); break;
     case SCREEN_USAGE:        lv_obj_clear_flag(usage_dual_container, LV_OBJ_FLAG_HIDDEN); break;
@@ -765,21 +788,12 @@ void ui_show_screen(screen_t screen) {
     case SCREEN_BLUETOOTH:    lv_obj_clear_flag(ble_container, LV_OBJ_FLAG_HIDDEN); break;
     default: break;
     }
+}
 
-    switch (screen) {
-    case SCREEN_USAGE_CLAUDE:
-        set_header_icon(&logo_dsc);
-        break;
-    case SCREEN_USAGE_CODEX:
-        set_header_icon(&codex_icon_dsc);
-        break;
-    case SCREEN_BLUETOOTH:
-        set_header_icon(&bluetooth_icon_dsc);
-        break;
-    default:
-        set_header_icon(nullptr);
-        break;
-    }
+void ui_show_screen(screen_t screen) {
+    hide_screen_roots();
+    show_screen_root(screen);
+    set_header_icon(header_icon_for_screen(screen));
 
     if (screen != SCREEN_SPLASH) prev_non_splash_screen = screen;
     current_screen = screen;
