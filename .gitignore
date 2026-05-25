@@ -14,6 +14,7 @@ tools/package-lock.json
 
 # Mac daemon venv
 daemon/.venv/
+daemon/config.toml
 
 # Python bytecode cache
 __pycache__/

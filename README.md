@@ -62,7 +62,7 @@ After flashing, open **System Settings → Bluetooth** and click *Connect* next 
 
 ### Install the daemon
 
-The daemon reads the selected provider OAuth tokens, polls usage every 60 s, and pushes it to the display over BLE. The default provider is `both`, which shows Claude and Codex together on the Usage screen.
+The daemon reads the selected provider OAuth tokens, polls usage every 60 s, and pushes it to the display over BLE. The macOS installer creates a local `provider = "both"` config by default, which shows Claude and Codex together on the Usage screen.
 
 ```bash
 ./install-mac.sh
