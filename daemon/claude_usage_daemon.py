@@ -7,7 +7,9 @@ bleak (CoreBluetooth backend on macOS).
 """
 
 import asyncio
+import argparse
 import json
+import os
 import re
 import signal
 import sys
@@ -17,8 +19,9 @@ from pathlib import Path
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
 
-from providers import Usage
+from providers import Provider, Usage
 from providers.claude import ClaudeProvider
+from providers.codex import CodexProvider
 
 DEVICE_NAME = "Claude Controller"
 SERVICE_UUID = "4c41555a-4465-7669-6365-000000000001"
@@ -30,6 +33,8 @@ TICK = 5
 SCAN_TIMEOUT = 8.0
 
 SAVED_ADDR_FILE = Path.home() / ".config" / "claude-usage-monitor" / "ble-address"
+CONFIG_PATH = Path(__file__).with_name("config.toml")
+VALID_PROVIDERS = {"claude", "codex"}
 
 
 def log(msg: str) -> None:
@@ -77,6 +82,57 @@ def usage_to_payload(usage: Usage) -> dict:
     }
 
 
+def load_config_provider() -> str | None:
+    try:
+        raw = CONFIG_PATH.read_text()
+    except FileNotFoundError:
+        return None
+    except OSError as e:
+        log(f"Config read failed: {e}")
+        return None
+    for line in raw.splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line or not line.startswith("provider"):
+            continue
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == "provider":
+            provider = value.strip().strip('"').strip("'").lower()
+            if provider in VALID_PROVIDERS:
+                return provider
+            log(f"Ignoring invalid provider in config: {provider}")
+    return None
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Clawdmeter BLE usage daemon")
+    parser.add_argument(
+        "--provider",
+        choices=sorted(VALID_PROVIDERS),
+        help="Usage provider. Overrides CLAWDMETER_PROVIDER and daemon/config.toml.",
+    )
+    return parser.parse_args(argv)
+
+
+def resolve_provider_name(args: argparse.Namespace) -> tuple[str, str]:
+    if args.provider:
+        return args.provider, "flag"
+    env_provider = os.environ.get("CLAWDMETER_PROVIDER", "").strip().lower()
+    if env_provider:
+        if env_provider in VALID_PROVIDERS:
+            return env_provider, "environment"
+        log(f"Ignoring invalid CLAWDMETER_PROVIDER={env_provider}")
+    config_provider = load_config_provider()
+    if config_provider:
+        return config_provider, "config"
+    return "claude", "default"
+
+
+def build_provider(name: str) -> Provider:
+    if name == "codex":
+        return CodexProvider(log)
+    return ClaudeProvider(log)
+
+
 class Session:
     def __init__(self, client: BleakClient) -> None:
         self.client = client
@@ -106,7 +162,7 @@ class Session:
 async def connect_and_run(
     address: str,
     stop_event: asyncio.Event,
-    provider: ClaudeProvider,
+    provider: Provider,
 ) -> bool:
     """Connect to a known address and poll until disconnected or stopped.
 
@@ -159,7 +215,8 @@ async def connect_and_run(
     return used_successfully
 
 
-async def main() -> None:
+async def main(argv: list[str] | None = None) -> None:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
@@ -173,9 +230,12 @@ async def main() -> None:
         except NotImplementedError:
             signal.signal(sig, _stop)
 
-    log("=== Claude Usage Tracker Daemon (BLE, macOS) ===")
+    provider_name, provider_source = resolve_provider_name(args)
+    provider = build_provider(provider_name)
+
+    log("=== Clawdmeter Usage Tracker Daemon (BLE, macOS) ===")
+    log(f"Provider: {provider_name} ({provider_source})")
     log(f"Poll interval: {POLL_INTERVAL}s")
-    provider = ClaudeProvider(log)
 
     backoff = 1
     while not stop_event.is_set():

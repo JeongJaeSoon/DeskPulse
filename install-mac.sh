@@ -12,11 +12,12 @@ DAEMON_PY="$SCRIPT_DIR/daemon/claude_usage_daemon.py"
 LOG_DIR="$HOME/Library/Logs"
 LOG_OUT="$LOG_DIR/claude-usage-daemon.out.log"
 LOG_ERR="$LOG_DIR/claude-usage-daemon.err.log"
+CONFIG_FILE="$SCRIPT_DIR/daemon/config.toml"
 
 echo "=== Clawdmeter macOS install ==="
 echo ""
 
-echo "[1/5] Checking prerequisites..."
+echo "[1/6] Checking prerequisites..."
 for cmd in python3 curl; do
     command -v "$cmd" >/dev/null || { echo "Error: $cmd is required"; exit 1; }
 done
@@ -28,7 +29,7 @@ fi
 echo "  OK"
 echo ""
 
-echo "[2/5] Creating Python virtualenv at daemon/.venv ..."
+echo "[2/6] Creating Python virtualenv at daemon/.venv ..."
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
 fi
@@ -38,7 +39,16 @@ PYTHON_BIN="$VENV_DIR/bin/python"
 echo "  OK ($PYTHON_BIN)"
 echo ""
 
-echo "[3/5] Rendering launchd plist..."
+echo "[3/6] Ensuring daemon config..."
+if [ ! -f "$CONFIG_FILE" ]; then
+    printf 'provider = "claude"\n' > "$CONFIG_FILE"
+    echo "  Created: $CONFIG_FILE"
+else
+    echo "  Preserved: $CONFIG_FILE"
+fi
+echo ""
+
+echo "[4/6] Rendering launchd plist..."
 mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
 sed \
     -e "s|__PYTHON_BIN__|${PYTHON_BIN}|g" \
@@ -51,7 +61,7 @@ sed \
 echo "  Installed: $PLIST_DST"
 echo ""
 
-echo "[4/5] Bluetooth permission check..."
+echo "[5/6] Bluetooth permission check..."
 echo "  On first run the daemon will trigger a Bluetooth permission prompt."
 echo "  macOS only prompts for foreground processes — so we'll run it"
 echo "  interactively once below. Press Ctrl+C after you see 'Scanning...'"
@@ -64,7 +74,7 @@ if [[ ! "$ans" =~ ^[Nn]$ ]]; then
 fi
 echo ""
 
-echo "[5/5] Loading launchd service..."
+echo "[6/6] Loading launchd service..."
 launchctl unload "$PLIST_DST" 2>/dev/null || true
 launchctl load -w "$PLIST_DST"
 echo "  Loaded."
@@ -81,5 +91,7 @@ echo ""
 echo "Useful commands:"
 echo "  launchctl list | grep claude-usage     # check it's running"
 echo "  tail -F $LOG_OUT                       # live logs"
+echo "  ./switch-provider.sh claude            # show Claude Code usage"
+echo "  ./switch-provider.sh codex             # show Codex usage"
 echo "  launchctl unload $PLIST_DST            # stop"
 echo "  launchctl load -w $PLIST_DST           # start"

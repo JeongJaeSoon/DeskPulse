@@ -41,7 +41,7 @@ Boards supported out of the box:
 - [PlatformIO CLI](https://docs.platformio.org/en/latest/core/installation/index.html)
 - Linux: `curl`, `bluetoothctl`, `busctl` (BlueZ Bluetooth stack)
 - macOS: `python3` (the installer sets up a venv with `bleak` and `httpx`)
-- Claude Code with an active subscription
+- Claude Code and/or Codex with an active subscription
 
 ## macOS installation
 
@@ -62,13 +62,32 @@ After flashing, open **System Settings → Bluetooth** and click *Connect* next 
 
 ### Install the daemon
 
-The daemon reads your Claude OAuth token from the macOS Keychain (service `Claude Code-credentials`), polls usage every 60 s, and pushes it to the display over BLE.
+The daemon reads the selected provider's OAuth token, polls usage every 60 s, and pushes it to the display over BLE. The default provider is Claude.
 
 ```bash
 ./install-mac.sh
 ```
 
-The installer creates a Python venv in `daemon/.venv/`, installs `bleak` and `httpx`, renders a LaunchAgent into `~/Library/LaunchAgents/com.user.claude-usage-daemon.plist`, and loads it. The first run is launched interactively so macOS prompts for Bluetooth permission.
+The installer creates a Python venv in `daemon/.venv/`, installs `bleak` and `httpx`, creates `daemon/config.toml` if it does not exist, renders a LaunchAgent into `~/Library/LaunchAgents/com.user.claude-usage-daemon.plist`, and loads it. The first run is launched interactively so macOS prompts for Bluetooth permission.
+
+### Switch between Claude and Codex
+
+The firmware BLE JSON schema stays the same, so switching providers does not require reflashing the device.
+
+```bash
+./switch-provider.sh claude
+./switch-provider.sh codex
+```
+
+The script updates `daemon/config.toml` and reloads the LaunchAgent. The setting is preserved across daemon restarts, re-login, and reinstall because `install-mac.sh` does not overwrite an existing config file.
+
+Provider selection priority:
+
+1. CLI flag: `daemon/.venv/bin/python daemon/claude_usage_daemon.py --provider codex`
+2. Environment variable: `CLAWDMETER_PROVIDER=codex`
+3. Config file: `daemon/config.toml`
+
+Claude uses the existing Claude Code OAuth credential store. Codex uses ChatGPT OAuth credentials from `~/.codex/auth.json` or the Codex keychain store (`Codex Auth`). Codex API-key mode does not have 5-hour/weekly subscription limits, so the daemon reports an unavailable status instead of fabricating values.
 
 Useful commands:
 
@@ -120,9 +139,9 @@ View logs: `journalctl --user -u claude-usage-daemon -f`
 
 ## How it works
 
-1. The daemon reads your Claude Code OAuth token — from the macOS Keychain (service `Claude Code-credentials`) on macOS, or from `~/.claude/.credentials.json` on Linux.
-2. It makes a minimal API call to `api.anthropic.com/v1/messages` — one token of Haiku, basically free.
-3. The usage numbers come straight out of the response headers (`anthropic-ratelimit-unified-5h-utilization` and friends).
+1. The daemon reads the configured provider from CLI/env/config, defaulting to Claude.
+2. Claude reads the Claude Code OAuth token from the macOS Keychain (service `Claude Code-credentials`) on macOS, or from `~/.claude/.credentials.json` on Linux. It makes a minimal API call to `api.anthropic.com/v1/messages` and reads usage from response headers.
+3. Codex reads ChatGPT OAuth tokens from `~/.codex/auth.json` or the Codex keychain store and reads the 5-hour/weekly windows from the ChatGPT backend usage response.
 4. The daemon connects to the ESP32 over BLE and writes a JSON payload to the GATT RX characteristic.
 5. The firmware parses it and updates the LVGL dashboard.
 6. The firmware also tracks the rate of change of session % over a 5-minute window and picks splash animations from the matching mood group.
